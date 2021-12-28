@@ -16,7 +16,7 @@
          equery/2, equery/3, equery/4,
          prepared_query/3,
          parse/2, parse/3, parse/4,
-         prepared_query2/3, prepared_query2/4, prepared_query2/5, 
+         prepared_query2/3, prepared_query2/4, prepared_query2/5,
          describe/2, describe/3,
          bind/3, bind/4,
          execute/2, execute/3, execute/4,

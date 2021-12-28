@@ -86,7 +86,7 @@ handle_message(?ROW_DESCRIPTION, <<Count:?int16, Bin/binary>>, Sock,
                       types = TypeNames,
                       columns = Columns2,
                       parameter_info = Params},
-    NSock = store_statment(Stmt, Sock),    
+    NSock = store_statment(Stmt, Sock),
     {requeue, NSock, State};
 handle_message(?NO_DATA, <<>>, Sock, #pquery2{name = Name, parameter_descr = Params,
                                               parameter_typenames = TypeNames} = State) ->
@@ -141,4 +141,3 @@ handle_message(_, _, _, _) ->
 store_statment(Stmt, Sock) ->
     Stmts1 = maps:put(Stmt#statement.name, Stmt, epgsql_sock:get_stmts(Sock)),
     epgsql_sock:set_stmts(Stmts1, Sock).
-    
