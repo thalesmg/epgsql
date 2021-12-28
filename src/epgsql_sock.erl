@@ -213,9 +213,11 @@ get_parameter_internal(Name, #state{parameters = Parameters}) ->
         false                  -> undefined
     end.
 
+-spec get_stmts(pg_sock()) -> map().
 get_stmts(#state{stmts = Stmts}) ->
     Stmts.
 
+-spec set_stmts(map(), pg_sock()) -> pg_sock().
 set_stmts(Stmts, State) ->
     State#state{stmts = Stmts}.
 
