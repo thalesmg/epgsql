@@ -72,9 +72,8 @@ handle_message(?PARAMETER_DESCRIPTION, Bin, Sock, State) ->
     TypeInfos = epgsql_wire:decode_parameters(Bin, Codec),
     OidInfos = [epgsql_binary:typeinfo_to_oid_info(Type, Codec) || Type <- TypeInfos],
     TypeNames = [epgsql_binary:typeinfo_to_name_array(Type, Codec) || Type <- TypeInfos],
-    Sock2 = epgsql_sock:notify(Sock, {types, TypeNames}),
-    {noaction, Sock2, State#pquery2{parameter_descr = OidInfos,
-                                    parameter_typenames = TypeNames}};
+    {noaction, Sock, State#pquery2{parameter_descr = OidInfos,
+                                   parameter_typenames = TypeNames}};
 handle_message(?ROW_DESCRIPTION, <<Count:?int16, Bin/binary>>, Sock,
                #pquery2{name = Name, parameter_descr = Params,
                         parameter_typenames = TypeNames} = State) ->
