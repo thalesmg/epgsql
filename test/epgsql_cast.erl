@@ -8,6 +8,7 @@
 -export([connect/1, connect/2, connect/3, connect/4, close/1]).
 -export([get_parameter/2, set_notice_receiver/2, get_cmd_status/1, squery/2, equery/2, equery/3]).
 -export([prepared_query/3]).
+-export([prepared_query2/3, prepared_query2/4, prepared_query2/5]).
 -export([parse/2, parse/3, parse/4, describe/2, describe/3]).
 -export([bind/3, bind/4, execute/2, execute/3, execute/4, execute_batch/2, execute_batch/3]).
 -export([close/2, close/3, sync/1]).
@@ -87,6 +88,16 @@ prepared_query(C, Name, Parameters) ->
         Error ->
             Error
     end.
+
+prepared_query2(C, SQL, Parameters) ->
+    prepared_query2(C, SQL, SQL, Parameters, []).
+
+prepared_query2(C, Name, SQL, Parameters) ->
+    prepared_query2(C, Name, SQL, Parameters, []).
+
+prepared_query2(C, Name, SQL, Parameters, Types) ->
+    Ref = epgsqla:prepared_query2(C, Name, SQL, Parameters, Types),
+    receive_result(C, Ref).
 
 %% parse
 
