@@ -100,6 +100,10 @@ handle_message(?ERROR, Error, _Sock, #pquery2{stmt = undefined}) ->
     {sync_required, Result};
 %% prepared query
 handle_message(?BIND_COMPLETE, <<>>, Sock, #pquery2{stmt = Stmt} = State) ->
+    case Stmt =:= undefined of
+        true -> io:format("Sock: ~p~nState: ~p~n", [Sock, State]);
+        false -> ok
+    end,
     #statement{columns = Columns} = Stmt,
     epgsql_sock:notify(Sock, {columns, Columns}), % Why do we need this?
     Codec = epgsql_sock:get_codec(Sock),
