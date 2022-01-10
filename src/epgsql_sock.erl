@@ -344,6 +344,8 @@ command_exec(Transport, Command, CmdState, State) ->
         {send_multi, Packets, State1, CmdState1} when is_list(Packets) ->
             ok = send_multi(State1, Packets),
             {noreply, command_enqueue(Transport, Command, CmdState1, State1)};
+        {finish, Result, State1} ->
+            {noreply, finish(State1#state{current_cmd = Command, current_cmd_transport = Transport}, Result)};
         {stop, StopReason, Response, State1} ->
             reply(Transport, Response, Response),
             {stop, StopReason, State1}

@@ -8,8 +8,10 @@
 -export([connect/1, connect/2, connect/3, connect/4, close/1]).
 -export([get_parameter/2, set_notice_receiver/2, get_cmd_status/1, squery/2, equery/2, equery/3]).
 -export([prepared_query/3]).
--export([prepared_query2/3, prepared_query2/4, prepared_query2/5]).
--export([parse/2, parse/3, parse/4, describe/2, describe/3]).
+-export([prepared_query2/3]).
+-export([parse/2, parse/3, parse/4]).
+-export([parse2/2, parse2/3, parse2/4]).
+-export([describe/2, describe/3]).
 -export([bind/3, bind/4, execute/2, execute/3, execute/4, execute_batch/2, execute_batch/3]).
 -export([close/2, close/3, sync/1]).
 
@@ -89,14 +91,8 @@ prepared_query(C, Name, Parameters) ->
             Error
     end.
 
-prepared_query2(C, SQL, Parameters) ->
-    prepared_query2(C, SQL, SQL, Parameters, []).
-
-prepared_query2(C, Name, SQL, Parameters) ->
-    prepared_query2(C, Name, SQL, Parameters, []).
-
-prepared_query2(C, Name, SQL, Parameters, Types) ->
-    Ref = epgsqli:prepared_query2(C, Name, SQL, Parameters, Types),
+prepared_query2(C, Name, Parameters) ->
+    Ref = epgsqli:prepared_query2(C, Name, Parameters),
     receive_result(C, Ref, undefined).
 
 %% parse
@@ -109,6 +105,18 @@ parse(C, Sql, Types) ->
 
 parse(C, Name, Sql, Types) ->
     Ref = epgsqli:parse(C, Name, Sql, Types),
+    sync_on_error(C, receive_describe(C, Ref, #statement{name = Name})).
+
+%% parse2
+
+parse2(C, Sql) ->
+    parse2(C, "", Sql, []).
+
+parse2(C, Sql, Types) ->
+    parse2(C, "", Sql, Types).
+
+parse2(C, Name, Sql, Types) ->
+    Ref = epgsqli:parse2(C, Name, Sql, Types),
     sync_on_error(C, receive_describe(C, Ref, #statement{name = Name})).
 
 %% bind
