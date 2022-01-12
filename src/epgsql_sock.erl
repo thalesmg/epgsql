@@ -345,7 +345,14 @@ command_exec(Transport, Command, CmdState, State) ->
             ok = send_multi(State1, Packets),
             {noreply, command_enqueue(Transport, Command, CmdState1, State1)};
         {finish, Result, State1} ->
-            {noreply, finish(State1#state{current_cmd = Command, current_cmd_transport = Transport}, Result)};
+            State2 = State1#state{current_cmd = Command, current_cmd_transport = Transport},
+            case Transport of
+                {incremental, From, Ref} ->
+                    From ! {self(), Ref, Result},
+                    {noreply, finish(State2, done)};
+                _ ->
+                    {noreply, finish(State2, Result)}
+            end;
         {stop, StopReason, Response, State1} ->
             reply(Transport, Response, Response),
             {stop, StopReason, State1}
