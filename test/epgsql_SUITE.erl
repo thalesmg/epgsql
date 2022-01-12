@@ -472,7 +472,6 @@ prepared_query2(Config) ->
         {ok, Cols, [{5}]} = Module:prepared_query2(C, "inc", [4]),
         {ok, Cols, [{2}]} = Module:prepared_query2(C, "inc", [1]),
         {ok, Cols, [{23}]} = Module:prepared_query2(C, "inc", [22]),
-        {ok, Cols, [{34}]} = Module:prepared_query2(C, [33]),
         {error, #error{codename = invalid_sql_statement_name}} =
             Module:prepared_query2(C, "non_existent_query", [4])
     end).
