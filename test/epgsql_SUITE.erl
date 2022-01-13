@@ -468,10 +468,12 @@ prepared_query(Config) ->
 prepared_query2(Config) ->
     Module = ?config(module, Config),
     epgsql_ct:with_connection(Config, fun(C) ->
-        {ok, Cols, [{5}]} = Module:prepared_query2(C, "inc", "select $1+1", [4]),
-        {ok, Cols, [{2}]} = Module:prepared_query2(C, "inc", "select $1+1", [1]),
-        {ok, Cols, [{23}]} = Module:prepared_query2(C, "inc", "select $1+1", [22]),
-        {ok, Cols, [{34}]} = Module:prepared_query2(C, "select $1+1", [33])
+        {ok, _} = Module:parse2(C, "inc", "select $1+1", []),
+        {ok, Cols, [{5}]} = Module:prepared_query2(C, "inc", [4]),
+        {ok, Cols, [{2}]} = Module:prepared_query2(C, "inc", [1]),
+        {ok, Cols, [{23}]} = Module:prepared_query2(C, "inc", [22]),
+        {error, #error{codename = invalid_sql_statement_name}} =
+            Module:prepared_query2(C, "non_existent_query", [4])
     end).
 
 select(Config) ->

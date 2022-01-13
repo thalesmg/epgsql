@@ -15,8 +15,9 @@
          squery/2,
          equery/2, equery/3, equery/4,
          prepared_query/3,
+         prepared_query2/3,
          parse/2, parse/3, parse/4,
-         prepared_query2/3, prepared_query2/4, prepared_query2/5,
+         parse2/2, parse2/3, parse2/4,
          describe/2, describe/3,
          bind/3, bind/4,
          execute/2, execute/3, execute/4,
@@ -306,14 +307,8 @@ prepared_query(C, Name, Parameters) when is_list(Name) ->
             Error
     end.
 
-prepared_query2(C, SQL, Parameters) ->
-    prepared_query2(C, SQL, SQL, Parameters, []).
-
-prepared_query2(C, Name, SQL, Parameters) ->
-    prepared_query2(C, Name, SQL, Parameters, []).
-
-prepared_query2(C, Name, SQL, Parameters, Types) ->
-    epgsql_sock:sync_command(C, epgsql_cmd_prepared_query2, {Name, SQL, Parameters, Types}).
+prepared_query2(C, Name, Parameters) ->
+    epgsql_sock:sync_command(C, epgsql_cmd_prepared_query2, {Name, Parameters}).
 
 %% parse
 
@@ -329,6 +324,21 @@ parse(C, Name, Sql, Types) ->
     sync_on_error(
       C, epgsql_sock:sync_command(
            C, epgsql_cmd_parse, {Name, Sql, Types})).
+
+%% parse2
+
+parse2(C, Sql) ->
+    parse2(C, Sql, []).
+
+parse2(C, Sql, Types) ->
+    parse2(C, "", Sql, Types).
+
+-spec parse2(connection(), iolist(), sql_query(), [epgsql_type()]) ->
+                   epgsql_cmd_parse:response().
+parse2(C, Name, Sql, Types) ->
+    sync_on_error(
+      C, epgsql_sock:sync_command(
+           C, epgsql_cmd_parse2, {Name, Sql, Types})).
 
 %% bind
 

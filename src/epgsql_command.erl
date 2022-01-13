@@ -19,6 +19,7 @@
          epgsql_sock:pg_sock(), state()}
       | {send_multi, [{epgsql_wire:packet_type(), PktData :: iodata()}],
          epgsql_sock:pg_sock(), state()}
+      | {finish, Response :: any(), epgsql_sock:pg_sock()}
       | {stop, Reason :: any(), Response :: any(), epgsql_sock:pg_sock()}.
 
 %% Execute command. It should send commands to socket.

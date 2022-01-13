@@ -21,34 +21,28 @@
 -type response() :: {ok, Count :: non_neg_integer(), Cols :: [epgsql:column()], Rows :: [tuple()]}
                   | {ok, Count :: non_neg_integer()}
                   | {ok, Cols :: [epgsql:column()], Rows :: [tuple()]}
-                  | {ok, #statement{}}
                   | {error, epgsql:query_error()}.
 
 -record(pquery2,
         {name :: iolist(),
-         sql :: iodata(),
          params :: list(),
-         types :: [atom()],
-         parameter_typenames = [] :: [epgsql:type_name() | {array, epgsql:type_name()}],
-         parameter_descr = [] :: [epgsql_oid_db:oid_info()],
          stmt = undefined :: #statement{} | undefined,
          decoder}).
 
-init({Name, SQL, Parameters, Types}) ->
-    #pquery2{name = Name, sql = SQL, params = Parameters, types = Types}.
+init({Name, Parameters}) ->
+    #pquery2{name = Name, params = Parameters}.
 
-execute(Sock, #pquery2{name = Name, sql = SQL, params = Params} = State) ->
+execute(Sock, #pquery2{name = Name, params = Params} = State) ->
     case maps:get(Name, epgsql_sock:get_stmts(Sock), undefined) of
         undefined ->
-            Codec = epgsql_sock:get_codec(Sock),
-            Bin = epgsql_wire:encode_types(State#pquery2.types, Codec),
-            Commands =
-                [
-                    epgsql_wire:encode_parse(Name, SQL, Bin),
-                    epgsql_wire:encode_describe(statement, Name),
-                    epgsql_wire:encode_flush()
-                ],
-            {send_multi, Commands, Sock, State};
+            Error = #error{
+                severity = error,
+                code = <<"26000">>,
+                codename = invalid_sql_statement_name,
+                message = list_to_binary(io_lib:format("prepared statement \"~s\" does not exist", [Name])),
+                extra = []
+            },
+            {finish, {error, Error}, Sock};
         #statement{types = Types} = Stmt ->
             TypedParams = lists:zip(Types, Params),
             #statement{name = StatementName, columns = Columns} = Stmt,
@@ -64,40 +58,6 @@ execute(Sock, #pquery2{name = Name, sql = SQL, params = Params} = State) ->
             {send_multi, Commands, Sock, State#pquery2{stmt = Stmt}}
     end.
 
-%% parse
-handle_message(?PARSE_COMPLETE, <<>>, Sock, _State) ->
-    {noaction, Sock};
-handle_message(?PARAMETER_DESCRIPTION, Bin, Sock, State) ->
-    Codec = epgsql_sock:get_codec(Sock),
-    TypeInfos = epgsql_wire:decode_parameters(Bin, Codec),
-    OidInfos = [epgsql_binary:typeinfo_to_oid_info(Type, Codec) || Type <- TypeInfos],
-    TypeNames = [epgsql_binary:typeinfo_to_name_array(Type, Codec) || Type <- TypeInfos],
-    {noaction, Sock, State#pquery2{parameter_descr = OidInfos,
-                                   parameter_typenames = TypeNames}};
-handle_message(?ROW_DESCRIPTION, <<Count:?int16, Bin/binary>>, Sock,
-               #pquery2{name = Name, parameter_descr = Params,
-                        parameter_typenames = TypeNames} = State) ->
-    Codec = epgsql_sock:get_codec(Sock),
-    Columns = epgsql_wire:decode_columns(Count, Bin, Codec),
-    Columns2 = [Col#column{format = epgsql_wire:format(Col, Codec)}
-                || Col <- Columns],
-    Stmt = #statement{name = Name,
-                      types = TypeNames,
-                      columns = Columns2,
-                      parameter_info = Params},
-    NSock = store_statment(Stmt, Sock),
-    {requeue, NSock, State};
-handle_message(?NO_DATA, <<>>, Sock, #pquery2{name = Name, parameter_descr = Params,
-                                              parameter_typenames = TypeNames} = State) ->
-    Stmt = #statement{name = Name,
-                      types = TypeNames,
-                      columns = [],
-                      parameter_info = Params},
-    NSock = store_statment(Stmt, Sock),
-    {requeue, NSock, State};
-handle_message(?ERROR, Error, _Sock, #pquery2{stmt = undefined}) ->
-    Result = {error, Error},
-    {sync_required, Result};
 %% prepared query
 handle_message(?BIND_COMPLETE, <<>>, Sock, #pquery2{stmt = Stmt} = State) ->
     #statement{columns = Columns} = Stmt,
@@ -136,7 +96,3 @@ handle_message(?ERROR, Error, Sock, State) ->
     {add_result, Result, Result, Sock, State};
 handle_message(_, _, _, _) ->
     unknown.
-
-store_statment(Stmt, Sock) ->
-    Stmts1 = maps:put(Stmt#statement.name, Stmt, epgsql_sock:get_stmts(Sock)),
-    epgsql_sock:set_stmts(Stmts1, Sock).
