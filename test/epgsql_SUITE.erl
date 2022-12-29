@@ -15,6 +15,9 @@
     end_per_suite/1
 ]).
 
+%% logger handler
+-export([log/2]).
+
 -compile([export_all, nowarn_export_all]).
 
 modules() ->
@@ -32,7 +35,7 @@ all() ->
 
 groups() ->
     SubGroups = [
-        {connect, [parrallel], [
+        {connect, [parallel], [
             connect,
             connect_with_application_name,
             connect_to_db,
@@ -77,9 +80,14 @@ groups() ->
             pipelined_prepared_query,
             pipelined_parse_batch_execute
         ]},
+        {incremental_sock_active, [parallel], [
+            incremental_sock_active_n,
+            incremental_sock_active_n_ssl
+        ]},
         {generic, [parallel], [
             with_transaction,
-            mixed_api
+            mixed_api,
+            redacted_state
         ]}
     ],
 
@@ -140,12 +148,13 @@ groups() ->
         listen_notify,
         listen_notify_payload,
         set_notice_receiver,
-        get_cmd_status
+        get_cmd_status,
+        get_backend_pid
     ],
     SubGroups ++
         [{epgsql, [], [{group, generic} | Tests]},
          {epgsql_cast, [], [{group, pipelining} | Tests]},
-         {epgsql_incremental, [], Tests}].
+         {epgsql_incremental, [], [{group, incremental_sock_active} | Tests]}].
 
 end_per_suite(_Config) ->
     ok.
@@ -1431,6 +1440,14 @@ get_cmd_status(Config) ->
         ?assertEqual({ok, 'commit'}, Module:get_cmd_status(C))
     end).
 
+get_backend_pid(Config) ->
+    Module = ?config(module, Config),
+    epgsql_ct:with_connection(Config, fun(C) ->
+        {ok, [#column{}], [{PidBin}]} = Module:squery(C, "SELECT pg_backend_pid()"),
+        Pid = Module:get_backend_pid(C),
+        ?assertEqual(PidBin, integer_to_binary(Pid))
+    end).
+
 range_type(Config) ->
     epgsql_ct:with_min_version(Config, [9, 2], fun(_C) ->
         check_type(Config, int4range, "int4range(10, 20)", {10, 20}, [
@@ -1612,6 +1629,106 @@ pipelined_parse_batch_execute(Config) ->
                end || Ref <- CloseRefs],
               erlang:cancel_timer(Timer)
       end).
+
+incremental_sock_active_n(Config) ->
+    epgsql_incremental = ?config(module, Config),
+    Q = "SELECT *, 'Hello world' FROM generate_series(0, 10240)",
+    epgsql_ct:with_connection(Config,
+         fun(C) ->
+             Ref = epgsqli:squery(C, Q),
+             {done, NumPassive, Others, Rows} = recv_incremental_active_n(C, Ref),
+             ?assertMatch([{columns, _}, {complete, _}], Others),
+             ?assert(NumPassive > 0),
+             ?assertMatch([{<<"0">>, <<"Hello world">>},
+                           {<<"1">>, <<"Hello world">>} | _], Rows),
+             ?assertEqual(10241, length(Rows))
+         end,
+         "epgsql_test",
+         [{socket_active, 2}]).
+
+-ifdef(OTP_RELEASE).
+incremental_sock_active_n_ssl(Config) ->
+    epgsql_incremental = ?config(module, Config),
+    Q = "SELECT *, 'Hello world' FROM generate_series(0, 10240)",
+    epgsql_ct:with_connection(Config,
+         fun(C) ->
+             Ref = epgsqli:squery(C, Q),
+             {done, NumPassive, Others, Rows} = recv_incremental_active_n(C, Ref),
+             ?assertMatch([{columns, _}, {complete, _}], Others),
+             ?assert(NumPassive > 0),
+             ?assertMatch([{<<"0">>, <<"Hello world">>},
+                           {<<"1">>, <<"Hello world">>} | _], Rows),
+             ?assertEqual(10241, length(Rows))
+         end,
+         "epgsql_test",
+         [{ssl, true}, {socket_active, 2}]).
+-else.
+%% {active, N} for SSL is only supported on OTP-21+
+incremental_sock_active_n_ssl(_Config) ->
+    noop.
+-endif.
+
+recv_incremental_active_n(C, Ref) ->
+    recv_incremental_active_n(C, Ref, 0, [], []).
+
+recv_incremental_active_n(C, Ref, NumPassive, Rows, Others) ->
+    receive
+        {C, Ref, {data, Row}} ->
+            recv_incremental_active_n(C, Ref, NumPassive, [Row | Rows], Others);
+        {epgsql, C, socket_passive} ->
+            ok = epgsql:activate(C),
+            recv_incremental_active_n(C, Ref, NumPassive + 1, Rows, Others);
+        {C, Ref, {error, _} = E} ->
+            E;
+        {C, Ref, done} ->
+            {done, NumPassive, lists:reverse(Others), lists:reverse(Rows)};
+        {C, Ref, Other} ->
+            recv_incremental_active_n(C, Ref, NumPassive, Rows, [Other | Others]);
+        Other ->
+            recv_incremental_active_n(C, Ref, NumPassive, Rows, [Other | Others])
+    after 5000 ->
+            error({timeout, NumPassive, Others, Rows})
+    end.
+
+redacted_state(Config) ->
+    case erlang:system_info(otp_release) of
+      V = [_, _] when V > "20" ->
+        redacted_state_(Config);
+      V ->
+        {skip, {"Logger facility is available starting OTP 21, running on OTP " ++ V}}
+    end.
+
+redacted_state_(Config) ->
+    _Handle = ct:timetrap({seconds, 3}),
+    try
+      logger:add_handler(?MODULE, ?MODULE, #{relay_to => self()}),
+      C = epgsql_ct:connect(Config),
+      true = unlink(C),
+      Reason = {please, ?MODULE, ?FUNCTION_NAME},
+      ok = proc_lib:stop(C, Reason, 1000),
+      receive
+        {log, Message} ->
+            ?assertMatch({report, #{label := {gen_server, terminate},
+                                    reason := Reason,
+                                    state := _}},
+                         Message),
+            {report, #{state := State}} = Message,
+            ?assertMatch(#{rows := information_redacted},
+                         epgsql_sock:state_to_map(State))
+      end
+    after
+      logger:remove_handler(?MODULE)
+    end.
+
+%% =============================================================================
+%% Logger handler
+%% ============================================================================
+
+log(#{msg := Msg}, #{relay_to := Pid}) ->
+    Pid ! {log, Msg};
+log(_, _) ->
+    ok.
+
 %% =============================================================================
 %% Internal functions
 %% ============================================================================
