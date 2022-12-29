@@ -12,6 +12,7 @@
          get_parameter/2,
          set_notice_receiver/2,
          get_cmd_status/1,
+         get_backend_pid/1,
          squery/2,
          equery/2, equery/3, equery/4,
          prepared_query/3,
@@ -38,13 +39,15 @@
          start_replication/5,
          start_replication/6,
          start_replication/7,
-         to_map/1]).
--export([handle_x_log_data/5]).                 % private
+         to_map/1,
+         activate/1]).
+%% private
+-export([handle_x_log_data/5]).
 
--export_type([connection/0, connect_option/0, connect_opts/0,
+-export_type([connection/0, connect_option/0, connect_opts/0, connect_opts_map/0,
               connect_error/0, query_error/0, sql_query/0, column/0,
               type_name/0, epgsql_type/0, statement/0,
-              transaction_option/0, transaction_opts/0]).
+              transaction_option/0, transaction_opts/0, socket_active/0]).
 
 %% Deprecated types
 -export_type([bind_param/0, typed_param/0,
@@ -63,6 +66,7 @@
 -type host() :: inet:ip_address() | inet:hostname().
 -type password() :: string() | iodata() | fun( () -> iodata() ).
 -type connection() :: pid().
+-type socket_active() :: true | -32768..32767.
 -type connect_option() ::
     {host, host()}                                 |
     {username, string()}                           |
@@ -77,11 +81,10 @@
     {codecs,   Codecs     :: [{epgsql_codec:codec_mod(), any()}]} |
     {nulls,    Nulls      :: [any(), ...]} |    % terms to be used as NULL
     {replication, Replication :: string()} | % Pass "database" to connect in replication mode
-    {application_name, ApplicationName :: string()}.
-
--type connect_opts() ::
-        [connect_option()]
-      | #{host => host(),
+    {application_name, ApplicationName :: string()} |
+    {socket_active, Active :: socket_active()}.
+-type connect_opts_map() ::
+        #{host => host(),
           username => string(),
           password => password(),
           database => string(),
@@ -94,8 +97,11 @@
           codecs => [{epgsql_codec:codec_mod(), any()}],
           nulls => [any(), ...],
           replication => string(),
-          application_name => string()
+          application_name => string(),
+          socket_active => socket_active()
           }.
+
+-type connect_opts() :: connect_opts_map() | [connect_option()].
 
 -type transaction_option() ::
     {reraise, boolean()}          |
@@ -243,7 +249,7 @@ update_type_cache(C, Codecs) ->
 close(C) ->
     epgsql_sock:close(C).
 
--spec get_parameter(connection(), binary()) -> binary() | undefined.
+-spec get_parameter(connection(), list() | binary()) -> {ok, binary() | undefined}.
 get_parameter(C, Name) ->
     epgsql_sock:get_parameter(C, Name).
 
@@ -261,6 +267,13 @@ set_notice_receiver(C, PidOrName) ->
       Status :: undefined | atom() | {atom(), integer()}.
 get_cmd_status(C) ->
     epgsql_sock:get_cmd_status(C).
+
+%% @doc Returns the OS pid of PostgreSQL backend OS process that serves this connection.
+%%
+%% Similar to `SELECT pg_get_pid()', but does not need network roundtrips.
+-spec get_backend_pid(connection()) -> integer().
+get_backend_pid(C) ->
+    epgsql_sock:get_backend_pid(C).
 
 -spec squery(connection(), sql_query()) -> epgsql_cmd_squery:response() | epgsql_sock:error().
 %% @doc runs simple `SqlQuery' via given `Connection'
@@ -441,7 +454,7 @@ with_transaction(C, F) ->
 %%   `{rollback, ErrorReason}' will be returned. Default: `true'</dd>
 %%  <dt>ensure_comitted</dt>
 %%  <dd>even when callback returns without exception,
-%%   check that transaction was comitted by checking CommandComplete status
+%%   check that transaction was committed by checking CommandComplete status
 %%   of "COMMIT" command. In case when transaction was rolled back, status will be
 %%   "rollback" instead of "commit". Default: `false'</dd>
 %%  <dt>begin_opts</dt>
@@ -582,3 +595,16 @@ to_map(Map) when is_map(Map) ->
     Map;
 to_map(List) when is_list(List) ->
     maps:from_list(List).
+
+%% @doc Activates TCP or SSL socket of a connection.
+%%
+%% If the `socket_active` connection option is supplied the function sets
+%% `{active, X}' the connection's SSL or TCP socket. It sets `{active, true}' otherwise.
+%%
+%% @param Connection connection
+%% @returns `ok' or `{error, Reason}'
+%%
+%% Note: The ssl:reason() type is not exported so that we use `any()' on the spec.
+-spec activate(connection()) -> ok | {error, inet:posix() | any()}.
+activate(Connection) ->
+    epgsql_sock:activate(Connection).

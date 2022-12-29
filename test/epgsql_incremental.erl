@@ -6,7 +6,8 @@
 -module(epgsql_incremental).
 
 -export([connect/1, connect/2, connect/3, connect/4, close/1]).
--export([get_parameter/2, set_notice_receiver/2, get_cmd_status/1, squery/2, equery/2, equery/3]).
+-export([get_parameter/2, set_notice_receiver/2, get_cmd_status/1, get_backend_pid/1,
+         squery/2, equery/2, equery/3]).
 -export([prepared_query/3]).
 -export([prepared_query2/3]).
 -export([parse/2, parse/3, parse/4]).
@@ -42,7 +43,10 @@ await_connect(Ref, Opts0) ->
         {C, Ref, connected} ->
             {ok, C};
         {_C, Ref, Error = {error, _}} ->
-            Error
+            Error;
+        {epgsql, C, socket_passive} ->
+            ok = epgsql:activate(C),
+            await_connect(Ref, Opts0)
     after Timeout ->
             error(timeout)
     end.
@@ -58,6 +62,9 @@ set_notice_receiver(C, PidOrName) ->
 
 get_cmd_status(C) ->
     epgsqli:get_cmd_status(C).
+
+get_backend_pid(C) ->
+    epgsqli:get_backend_pid(C).
 
 squery(C, Sql) ->
     Ref = epgsqli:squery(C, Sql),
@@ -214,6 +221,9 @@ receive_result(C, Ref, Cols, Rows) ->
             {ok, Cols, lists:reverse(Rows)};
         {C, Ref, done} ->
             done;
+        {epgsql, C, socket_passive} ->
+            ok = epgsql:activate(C),
+            receive_result(C, Ref, Cols, Rows);
         {'EXIT', C, _Reason} ->
             throw({error, closed})
     end.
@@ -243,6 +253,9 @@ receive_extended_result(C, Ref, Rows) ->
             {ok, lists:reverse(Rows)};
         {C, Ref, done} ->
             done;
+        {epgsql, C, socket_passive} ->
+            ok = epgsql:activate(C),
+            receive_extended_result(C, Ref, Rows);
         {'EXIT', C, _Reason} ->
             {error, closed}
     end.
@@ -257,6 +270,9 @@ receive_describe(C, Ref, Statement = #statement{}) ->
             {ok, Statement#statement{columns = []}};
         {C, Ref, Error = {error, _}} ->
             Error;
+        {epgsql, C, socket_passive} ->
+            ok = epgsql:activate(C),
+            receive_describe(C, Ref, Statement);
         {'EXIT', C, _Reason} ->
             {error, closed}
     end.
@@ -269,6 +285,9 @@ receive_describe_portal(C, Ref) ->
             {ok, []};
         {C, Ref, Error = {error, _}} ->
             Error;
+        {epgsql, C, socket_passive} ->
+            ok = epgsql:activate(C),
+            receive_describe_portal(C, Ref);
         {'EXIT', C, _Reason} ->
             {error, closed}
     end.
@@ -279,6 +298,9 @@ receive_atom(C, Ref, Receive, Return) ->
             Return;
         {C, Ref, Error = {error, _}} ->
             Error;
+        {epgsql, C, socket_passive} ->
+            ok = epgsql:activate(C),
+            receive_atom(C, Ref, Receive, Return);
         {'EXIT', C, _Reason} ->
             {error, closed}
     end.
