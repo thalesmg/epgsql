@@ -1,0 +1,19 @@
+%% -*- mode: erlang -*-
+{"4.7.0-emqx-1",
+  [
+    {<<"4\\.6\\.[0-9]">>, [
+      {load_module, epgsql, brutal_purge, soft_purge, []},
+      {load_module, epgsql_sock, brutal_purge, soft_purge, []},
+      {load_module, epgsqla, brutal_purge, soft_purge, []},
+      {load_module, epgsqli, brutal_purge, soft_purge, []}
+    ]}
+  ],
+  [
+    {<<"4\\.6\\.[0-9]">>, [
+      {load_module, epgsql, brutal_purge, soft_purge, []},
+      {load_module, epgsql_sock, brutal_purge, soft_purge, []},
+      {load_module, epgsqla, brutal_purge, soft_purge, []},
+      {load_module, epgsqli, brutal_purge, soft_purge, []}
+    ]}
+  ]
+}.
