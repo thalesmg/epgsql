@@ -6,8 +6,6 @@ on:
       - master
       - devel
   pull_request:
-    branches:
-      - devel
 jobs:
   test:
     name: OTP-${{matrix.otp}}, PG-${{matrix.pg}}, PostGIS-${{matrix.postgis}}, OS-${{matrix.os}}
